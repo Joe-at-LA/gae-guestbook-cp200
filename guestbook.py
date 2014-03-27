@@ -45,25 +45,18 @@ class MainPage(webapp2.RequestHandler):
         self.response.out.write('<b>Cache Misses: %s</b><br /><br />' % stats['misses'])
         self.response.out.write(greetings)
 
-        greetings_query = Greeting.query(ancestor=guestbook_key(guestbook_name)).order(-Greeting.date)
-        greetings = greetings_query.fetch(10)
+        self.response.out.write("""
+          <form action="/sign?%s" method="post">
+            <div><textarea name="content" rows="3" cols="60"></textarea></div>
+            <div><input type="submit" value="Sign Guestbook"></div>
+          </form>
+          <hr>
+          <form>Guestbook name: <input value="%s" name="guestbook_name">
+          <input type="submit" value="switch"></form>
+        </body>
+      </html>""" % (urllib.urlencode({'guestbook_name': guestbook_name}),
+                          cgi.escape(guestbook_name)))
 
-        if users.get_current_user():
-            url = users.create_logout_url(self.request.uri)
-            url_linktext = 'Logout'
-        else:
-            url = users.create_login_url(self.request.uri)
-            url_linktext = 'Login'
-
-        template_values = {
-            'greetings': greetings,
-            'guestbook_name': urllib.quote_plus(guestbook_name),
-            'url': url,
-            'url_linktext': url_linktext,
-        }
-
-        template = JINJA_ENVIRONMENT.get_template('index.html')
-        self.response.write(template.render(template_values))
 
     def get_greetings(self, guestbook_name):
         """get_greetings()
@@ -86,6 +79,7 @@ class MainPage(webapp2.RequestHandler):
             if not memcache.add('%s:greetings' % guestbook_name, greetings, 10):
                 logging.error('Memcache set failed.')
             return greetings
+
 
     def render_greetings(self, guestbook_name):
         """render_greetings()
@@ -120,20 +114,17 @@ class MainPage(webapp2.RequestHandler):
 class Guestbook(webapp2.RequestHandler):
 
     def post(self):
-        guestbook_name = self.request.get('guestbook_name', DEFAULT_GUESTBOOK_NAME)
+        guestbook_name = self.request.get('guestbook_name')
         greeting = Greeting(parent=guestbook_key(guestbook_name))
 
         if users.get_current_user():
-            greeting.author = users.get_current_user()
+            greeting.author = users.get_current_user().nickname()
 
         greeting.content = self.request.get('content')
         greeting.put()
+        memcache.flush_all()
 
-        query_params = {'guestbook_name': guestbook_name}
-        self.redirect('/?' + urllib.urlencode(query_params))
-
-
-
+        self.redirect('/?' + urllib.urlencode({'guestbook_name': guestbook_name}))
 
 
 
