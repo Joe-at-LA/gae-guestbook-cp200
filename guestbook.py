@@ -113,7 +113,7 @@ class MainPage(webapp2.RequestHandler):
 class Guestbook(webapp2.RequestHandler):
 
     def post(self):
-        guestbook_name = self.request.get('guestbook_name')
+        guestbook_name = self.request.get('guestbook_name', DEFAULT_GUESTBOOK)
         greeting = Greeting(parent=guestbook_key(guestbook_name))
 
         if users.get_current_user():
