@@ -11,11 +11,8 @@ import logging
 import urllib
 import os
 
-JINJA_ENVIRONMENT = jinja2.Environment(
-    loader=jinja2.FileSystemLoader(os.path.dirname(__file__)),
-    extensions=['jinja2.ext.autoescape'],
-    autoescape=True)
-
+JINJA_ENVIRONMENT = jinja2.Environment(loader=jinja2.FileSystemLoader(os.path.dirname(__file__)))
+DEFAULT_GUESTBOOK = 'default_guestbook'
 
 
 class Greeting(db.Model):
@@ -35,27 +32,29 @@ def guestbook_key(guestbook_name=None):
 class MainPage(webapp2.RequestHandler):
 
     def get(self):
-        self.response.write('<html><body>')
-        guestbook_name = self.request.get('guestbook_name')
-
+        guestbook_name = self.request.get('guestbook_name', DEFAULT_GUESTBOOK)
         greetings = self.get_greetings(guestbook_name)
         stats = memcache.get_stats()
 
-        self.response.out.write('<b>Cache Hits: %s</b><br />' % stats['hits'])
-        self.response.out.write('<b>Cache Misses: %s</b><br /><br />' % stats['misses'])
-        self.response.out.write(greetings)
+        if users.get_current_user():
+            url = users.create_logout_url(self.request.uri)
+            url_linktext = 'Logout'
+        else:
+            url = users.create_login_url(self.request.uri)
+            url_linktext = 'Login'
 
-        self.response.out.write("""
-          <form action="/sign?%s" method="post">
-            <div><textarea name="content" rows="3" cols="60"></textarea></div>
-            <div><input type="submit" value="Sign Guestbook"></div>
-          </form>
-          <hr>
-          <form>Guestbook name: <input value="%s" name="guestbook_name">
-          <input type="submit" value="switch"></form>
-        </body>
-      </html>""" % (urllib.urlencode({'guestbook_name': guestbook_name}),
-                          cgi.escape(guestbook_name)))
+        template_values = {
+            'cache_hits': stats['hits'],
+            'cache_misses': stats['misses'],
+            'greetings': greetings,
+            'guestbook_name': guestbook_name,
+            'query_string': urllib.urlencode({'guestbook_name': guestbook_name}),
+            'url': url,
+            'url_linktext': url_linktext,
+        }
+
+        template = JINJA_ENVIRONMENT.get_template('index.html')
+        self.response.write(template.render(template_values))
 
 
     def get_greetings(self, guestbook_name):
@@ -76,7 +75,7 @@ class MainPage(webapp2.RequestHandler):
             return greetings
         else:
             greetings = self.render_greetings(guestbook_name)
-            if not memcache.add('%s:greetings' % guestbook_name, greetings, 10):
+            if not memcache.add('%s:greetings' % guestbook_name, greetings):
                 logging.error('Memcache set failed.')
             return greetings
 
@@ -122,10 +121,9 @@ class Guestbook(webapp2.RequestHandler):
 
         greeting.content = self.request.get('content')
         greeting.put()
-        memcache.flush_all()
+        memcache.delete('%s:greetings' % guestbook_name);
 
         self.redirect('/?' + urllib.urlencode({'guestbook_name': guestbook_name}))
-
 
 
 
